@@ -82,7 +82,7 @@ func NewService(params *service.BootstrapParams) common.Daemon {
 func NewConfig(dc *dynamicconfig.Collection) *Config {
 	return &Config{
 		ReplicationCfg: &replicator.Config{
-			EnableHistoryRereplication: dc.GetBoolProperty(dynamicconfig.EnableHistoryRereplication, false),
+			EnableHistoryRereplication: dc.GetBoolProperty(dynamicconfig.EnableHistoryRereplication, true),
 			PersistenceMaxQPS:          dc.GetIntProperty(dynamicconfig.WorkerPersistenceMaxQPS, 500),
 			ReplicatorConcurrency:      dc.GetIntProperty(dynamicconfig.WorkerReplicatorConcurrency, 1000),
 			ReplicatorBufferRetryCount: dc.GetIntProperty(dynamicconfig.WorkerReplicatorBufferRetryCount, 8),
