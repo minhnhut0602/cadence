@@ -243,6 +243,7 @@ func (t *timerQueueActiveProcessorImpl) processExpiredUserTimer(task *persistenc
 		return err0
 	}
 	defer func() { release(retError) }()
+	referenceTime := t.now()
 
 Update_History_Loop:
 	for attempt := 0; attempt < conditionalRetryCount; attempt++ {
@@ -265,7 +266,7 @@ Update_History_Loop:
 				return fmt.Errorf("Failed to find in memory user timer: %s", td.TimerID)
 			}
 
-			if isExpired := tBuilder.IsTimerExpired(td, task.VisibilityTimestamp); isExpired {
+			if isExpired := tBuilder.IsTimerExpired(td, referenceTime); isExpired {
 				// Add TimerFired event to history.
 				if msBuilder.AddTimerFiredEvent(ti.StartedID, ti.TimerID) == nil {
 					return errFailedToAddTimerFiredEvent
