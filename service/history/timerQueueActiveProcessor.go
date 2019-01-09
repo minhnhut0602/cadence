@@ -267,6 +267,10 @@ Update_History_Loop:
 			}
 
 			if isExpired := tBuilder.IsTimerExpired(td, referenceTime); isExpired {
+				if ok := tBuilder.IsTimerExpired(td, task.VisibilityTimestamp); !ok {
+					t.logger.WithField("timer", td).WithField("reference", task).Error("WHAT IS THIS")
+				}
+
 				// Add TimerFired event to history.
 				if msBuilder.AddTimerFiredEvent(ti.StartedID, ti.TimerID) == nil {
 					return errFailedToAddTimerFiredEvent
