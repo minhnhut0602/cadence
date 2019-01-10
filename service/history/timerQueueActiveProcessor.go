@@ -201,8 +201,35 @@ func (t *timerQueueActiveProcessorImpl) notifyNewTimers(timerTasks []persistence
 func (t *timerQueueActiveProcessorImpl) process(timerTask *persistence.TimerTaskInfo) (int, error) {
 	ok, err := t.timerTaskFilter(timerTask)
 	if err != nil {
+		t.logger.WithFields(bark.Fields{
+			logging.TagDomainID:            timerTask.DomainID,
+			logging.TagWorkflowExecutionID: timerTask.WorkflowID,
+			logging.TagWorkflowRunID:       timerTask.RunID,
+			logging.TagTaskID:              timerTask.GetTaskID(),
+			logging.TagTaskType:            timerTask.GetTaskType(),
+			logging.TagVersion:             timerTask.GetVersion(),
+			logging.TagTimeoutType:         timerTask.TimeoutType,
+			logging.TagTimestamp:           timerTask.VisibilityTimestamp,
+			logging.TagEventID:             timerTask.EventID,
+			logging.TagAttempt:             timerTask.ScheduleAttempt,
+			logging.TagErr:                 err,
+		}).Error("Error.")
+
 		return metrics.TimerActiveQueueProcessorScope, err
 	} else if !ok {
+		t.logger.WithFields(bark.Fields{
+			logging.TagDomainID:            timerTask.DomainID,
+			logging.TagWorkflowExecutionID: timerTask.WorkflowID,
+			logging.TagWorkflowRunID:       timerTask.RunID,
+			logging.TagTaskID:              timerTask.GetTaskID(),
+			logging.TagTaskType:            timerTask.GetTaskType(),
+			logging.TagVersion:             timerTask.GetVersion(),
+			logging.TagTimeoutType:         timerTask.TimeoutType,
+			logging.TagTimestamp:           timerTask.VisibilityTimestamp,
+			logging.TagEventID:             timerTask.EventID,
+			logging.TagAttempt:             timerTask.ScheduleAttempt,
+		}).Error("Skip.")
+
 		t.timerQueueAckMgr.completeTimerTask(timerTask)
 		t.logger.Debugf("Discarding timer: (%v, %v), for WorkflowID: %v, RunID: %v, Type: %v, EventID: %v, Error: %v",
 			timerTask.TaskID, timerTask.VisibilityTimestamp, timerTask.WorkflowID, timerTask.RunID, timerTask.TaskType, timerTask.EventID, err)
@@ -238,19 +265,43 @@ func (t *timerQueueActiveProcessorImpl) process(timerTask *persistence.TimerTask
 
 func (t *timerQueueActiveProcessorImpl) processExpiredUserTimer(task *persistence.TimerTaskInfo) (retError error) {
 
+	pos := 0
+	defer func() {
+		t.logger.WithFields(bark.Fields{
+			logging.TagDomainID:            task.DomainID,
+			logging.TagWorkflowExecutionID: task.WorkflowID,
+			logging.TagWorkflowRunID:       task.RunID,
+			logging.TagTaskID:              task.GetTaskID(),
+			logging.TagTaskType:            task.GetTaskType(),
+			logging.TagVersion:             task.GetVersion(),
+			logging.TagTimeoutType:         task.TimeoutType,
+			logging.TagTimestamp:           task.VisibilityTimestamp,
+			logging.TagEventID:             task.EventID,
+			logging.TagAttempt:             task.ScheduleAttempt,
+			logging.TagErr:                 retError,
+			"position":                     pos,
+		}).Error("Processing.")
+	}()
+
 	context, release, err0 := t.cache.getOrCreateWorkflowExecution(t.timerQueueProcessorBase.getDomainIDAndWorkflowExecution(task))
 	if err0 != nil {
+		pos = 1
 		return err0
 	}
 	defer func() { release(retError) }()
-	referenceTime := t.now()
 
 Update_History_Loop:
 	for attempt := 0; attempt < conditionalRetryCount; attempt++ {
 		msBuilder, err := loadMutableStateForTimerTask(context, task, t.metricsClient, t.logger)
 		if err != nil {
+			pos = 2
 			return err
 		} else if msBuilder == nil || !msBuilder.IsWorkflowExecutionRunning() {
+			if msBuilder == nil {
+				pos = 3
+			} else {
+				pos = 4
+			}
 			return nil
 		}
 		tBuilder := t.historyService.getTimerBuilder(context.getExecution())
@@ -262,20 +313,25 @@ Update_History_Loop:
 		for _, td := range tBuilder.GetUserTimers(msBuilder) {
 			hasTimer, ti := tBuilder.GetUserTimer(td.TimerID)
 			if !hasTimer {
+				pos = 5
 				t.logger.Debugf("Failed to find in memory user timer: %s", td.TimerID)
 				return fmt.Errorf("Failed to find in memory user timer: %s", td.TimerID)
 			}
 
-			if isExpired := tBuilder.IsTimerExpired(td, referenceTime); isExpired {
+			if isExpired := tBuilder.IsTimerExpired(td, task.VisibilityTimestamp); isExpired {
 				// Add TimerFired event to history.
+				pos = 6
 				if msBuilder.AddTimerFiredEvent(ti.StartedID, ti.TimerID) == nil {
+					pos = 7
 					return errFailedToAddTimerFiredEvent
 				}
 
 				scheduleNewDecision = !msBuilder.HasPendingDecisionTask()
 			} else {
+				pos = 8
 				// See if we have next timer in list to be created.
 				if !td.TaskCreated {
+					pos = 9
 					nextTask := tBuilder.createNewTask(td)
 					timerTasks = []persistence.Task{nextTask}
 
@@ -286,6 +342,12 @@ Update_History_Loop:
 
 				// Done!
 				break ExpireUserTimers
+			}
+		}
+
+		for _, v := range msBuilder.GetPendingTimerInfos() {
+			if v.StartedID == task.EventID {
+				t.logger.WithField("ms-timer", v).WithField("time-task", task).Error("Fail to timeout timer.")
 			}
 		}
 

@@ -348,10 +348,10 @@ const (
 		`IF range_id = ?`
 
 	templateUpdateCurrentWorkflowExecutionQuery = `UPDATE executions USING TTL 0 ` +
-		`SET current_run_id = ?, 
-execution = {run_id: ?, create_request_id: ?, state: ?, close_status: ?}, 
-replication_state = {start_version: ?, last_write_version: ?}, 
-workflow_last_write_version = ?, 
+		`SET current_run_id = ?,
+execution = {run_id: ?, create_request_id: ?, state: ?, close_status: ?},
+replication_state = {start_version: ?, last_write_version: ?},
+workflow_last_write_version = ?,
 workflow_state = ? ` +
 		`WHERE shard_id = ? ` +
 		`and type = ? ` +
@@ -1542,7 +1542,7 @@ func (d *cassandraPersistence) GetWorkflowExecution(request *p.GetWorkflowExecut
 	return &p.InternalGetWorkflowExecutionResponse{State: state}, nil
 }
 
-func (d *cassandraPersistence) UpdateWorkflowExecution(request *p.InternalUpdateWorkflowExecutionRequest) error {
+func (d *cassandraPersistence) UpdateWorkflowExecution(request *p.InternalUpdateWorkflowExecutionRequest) (retError error) {
 	batch := d.session.NewBatch(gocql.LoggedBatch)
 	cqlNowTimestamp := p.UnixNanoToDBTimestamp(time.Now().UnixNano())
 	executionInfo := request.ExecutionInfo
