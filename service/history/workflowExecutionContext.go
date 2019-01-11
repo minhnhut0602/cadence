@@ -85,6 +85,7 @@ type (
 
 var (
 	persistenceOperationRetryPolicy = common.CreatePersistanceRetryPolicy()
+	kafkaOperationRetryPolicy       = common.CreateKafkaOperationRetryPolicy()
 )
 
 func newWorkflowExecutionContext(domainID string, execution workflow.WorkflowExecution, shard ShardContext,
